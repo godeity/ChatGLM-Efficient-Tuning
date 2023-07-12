@@ -13,6 +13,12 @@
 
 ## 更新日志
 
+[23/07/09] 我们开源了 [FastEdit](https://github.com/hiyouga/FastEdit)⚡🩹，一个简单易用的、能迅速编辑大模型事实记忆的工具包。如果您感兴趣请关注我们的 [FastEdit](https://github.com/hiyouga/FastEdit) 项目。
+
+[23/06/25] 我们对齐了[示例 API](src/api_demo.py) 与 [OpenAI API](https://platform.openai.com/docs/api-reference/chat) 的格式，您可以将微调模型接入任意基于 ChatGPT 的应用中。
+
+[23/06/25] 现在我们实现了 [ChatGLM2-6B](https://github.com/THUDM/ChatGLM2-6B) 模型的微调。请尝试使用 `--use_v2` 参数来进行训练和预测。
+
 [23/06/05] 现在我们实现了 4 比特的 LoRA 训练（也称 [QLoRA](https://github.com/artidoro/qlora)）。请尝试使用 `--quantization_bit 4` 参数进行 4 比特量化微调。（实验性功能）
 
 [23/06/01] 我们开源了支持 LLaMA 和 BLOOM 系列模型的高效微调框架，如果您感兴趣请关注我们的 [LLaMA-Efficient-Tuning](https://github.com/hiyouga/LLaMA-Efficient-Tuning) 项目。
@@ -74,16 +80,19 @@ huggingface-cli login
   - 仅微调低秩适应器。
 - [P-Tuning V2](https://github.com/THUDM/P-tuning-v2)
   - 仅微调前缀编码器。
-- [Freeze](https://arxiv.org/abs/2012.14913)
+- [Freeze Tuning](https://arxiv.org/abs/2012.14913)
   - 仅微调后几层的全连接层。
+- 全量微调
+  - 微调模型所有参数。
 
 ## 软件依赖
 
 - Python 3.8+, PyTorch 1.13.1
 - 🤗Transformers, Datasets, Accelerate, PEFT, TRL
-- protobuf, cpm_kernels, sentencepiece
-- jieba, rouge_chinese, nltk（用于评估）
+- protobuf, cpm-kernels, sentencepiece
+- jieba, rouge-chinese, nltk（用于评估）
 - gradio, mdtex2html（用于网页端交互）
+- uvicorn, fastapi, sse-starlette（用于 API）
 
 以及 **强而有力的 GPU**！
 
@@ -105,16 +114,17 @@ cd ChatGLM-Efficient-Tuning
 pip install -r requirements.txt
 ```
 
-对于 Windows 用户，若要启用 LoRA 或 Freeze 的量化微调，请下载预构建的 `bitsandbytes` 包，目前仅支持 CUDA 11.6 和 11.7。
+对于 Windows 用户，若要启用 LoRA（QLoRA） 或 Freeze 的量化微调，请下载预构建的 `bitsandbytes` 包，目前支持 CUDA 11.1 到12.1。
 
-```
-pip install https://github.com/acpopescu/bitsandbytes/releases/download/v0.37.2-win.1/bitsandbytes-0.37.2-py3-none-any.whl
+```bash
+pip install https://github.com/jllllll/bitsandbytes-windows-webui/releases/download/wheels/bitsandbytes-0.39.1-py3-none-win_amd64.whl
 ```
 
 ### 单 GPU 微调训练
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python src/train_sft.py \
+CUDA_VISIBLE_DEVICES=0 python src/train_bash.py \
+    --stage sft \
     --do_train \
     --dataset alpaca_gpt4_zh \
     --finetuning_type lora \
@@ -135,15 +145,14 @@ CUDA_VISIBLE_DEVICES=0 python src/train_sft.py \
 
 ```bash
 accelerate config # 首先配置分布式环境
-accelerate launch src/train_sft.py # 参数同上
+accelerate launch src/train_bash.py # 参数同上
 ```
-
-注意：若您使用 LoRA 方法进行微调，请指定以下参数 `--ddp_find_unused_parameters False` 来避免报错。
 
 ### 奖励模型训练
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python src/train_rm.py \
+CUDA_VISIBLE_DEVICES=0 python src/train_bash.py \
+    --stage rm \
     --do_train \
     --dataset comparison_gpt4_zh \
     --finetuning_type lora \
@@ -161,7 +170,8 @@ CUDA_VISIBLE_DEVICES=0 python src/train_rm.py \
 ### RLHF 训练
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python src/train_ppo.py \
+CUDA_VISIBLE_DEVICES=0 python src/train_bash.py \
+    --stage ppo \
     --do_train \
     --dataset alpaca_gpt4_zh \
     --finetuning_type lora \
@@ -181,7 +191,8 @@ CUDA_VISIBLE_DEVICES=0 python src/train_ppo.py \
 ### 指标评估（BLEU分数和汉语ROUGE分数）
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python src/train_sft.py \
+CUDA_VISIBLE_DEVICES=0 python src/train_bash.py \
+    --stage sft \
     --do_eval \
     --dataset alpaca_gpt4_zh \
     --checkpoint_dir path_to_checkpoint \
@@ -193,7 +204,8 @@ CUDA_VISIBLE_DEVICES=0 python src/train_sft.py \
 
 ### 模型预测
 ```bash
-CUDA_VISIBLE_DEVICES=0 python src/train_sft.py \
+CUDA_VISIBLE_DEVICES=0 python src/train_bash.py \
+    --stage sft \
     --do_predict \
     --dataset alpaca_gpt4_zh \
     --checkpoint_dir path_to_checkpoint \
@@ -318,7 +330,7 @@ python src/export_model.py \
 - [x] 量化微调。
 - [x] 撰写基于该框架的 ChatGLM 模型微调指南手册。
 - [ ] 结合模型编辑技术。（例如：[MEND](https://arxiv.org/abs/2110.11309)）
-- [ ] 加入 [OpenAssistant 对话数据集](https://huggingface.co/datasets/OpenAssistant/oasst1)用于监督微调和意图对齐。
+- [x] 加入 [OpenAssistant 对话数据集](https://huggingface.co/datasets/OpenAssistant/oasst1)用于监督微调和意图对齐。
 - [ ] 加入高质量中文开源指令数据集 [COIG](https://huggingface.co/datasets/BAAI/COIG)。
 
 ## 协议
@@ -341,3 +353,7 @@ python src/export_model.py \
 ## 声明
 
 本项目受益于 [ChatGLM-6B](https://github.com/THUDM/ChatGLM-6B)、[ChatGLM-Tuning](https://github.com/mymusise/ChatGLM-Tuning) 和 [yuanzhoulvpi2017/zero_nlp](https://github.com/yuanzhoulvpi2017/zero_nlp)，感谢作者的付出。
+
+## Star History
+
+![Star History Chart](https://api.star-history.com/svg?repos=hiyouga/ChatGLM-Efficient-Tuning&type=Date)

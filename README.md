@@ -13,6 +13,12 @@ Fine-tuning 🤖[ChatGLM-6B](https://github.com/THUDM/ChatGLM-6B) model with �
 
 ## Changelog
 
+[23/07/09] Now we release [FastEdit](https://github.com/hiyouga/FastEdit)⚡🩹, an easy-to-use package for editing the factual knowledge of large language models efficiently. Please follow [FastEdit](https://github.com/hiyouga/FastEdit) if you are interested.
+
+[23/06/25] Now we align the [demo API](src/api_demo.py) with the [OpenAI's](https://platform.openai.com/docs/api-reference/chat) format where you can insert the fine-tuned model in arbitrary ChatGPT-based applications.
+
+[23/06/25] Now we support fine-tuning the [ChatGLM2-6B](https://github.com/THUDM/ChatGLM2-6B) model with our framework! Try `--use_v2` argument to fine-tune and predict that model.
+
 [23/06/05] Now we support 4-bit LoRA training (aka [QLoRA](https://github.com/artidoro/qlora)). Try `--quantization_bit 4` argument to work with 4-bit quantized model. (experimental feature)
 
 [23/06/01] We implemented a framework supporting the efficient tuning of LLaMA and BLOOM models. Please follow [LLaMA-Efficient-Tuning](https://github.com/hiyouga/LLaMA-Efficient-Tuning) if you are interested.
@@ -70,14 +76,17 @@ Our script now supports the following fine-tuning methods:
   - Fine-tuning the prefix encoder of the model.
 - [Freeze](https://arxiv.org/abs/2012.14913)
   - Fine-tuning the MLPs in the last n blocks of the model.
+- Full Tuning
+  - Fine-tuning all the parameters of the model.
 
 ## Requirement
 
 - Python 3.8+ and PyTorch 1.13.1
 - 🤗Transformers, Datasets, Accelerate, PEFT and TRL
-- protobuf, cpm_kernels and sentencepiece
-- jieba, rouge_chinese and nltk (used at evaluation)
+- protobuf, cpm-kernels and sentencepiece
+- jieba, rouge-chinese and nltk (used at evaluation)
 - gradio and mdtex2html (used in web_demo.py)
+- uvicorn, fastapi and sse-starlette (used in api_demo.py)
 
 And **powerful GPUs**!
 
@@ -99,16 +108,17 @@ cd ChatGLM-Efficient-Tuning
 pip install -r requirements.txt
 ```
 
-If you want to enable LoRA or Freeze quantization on Windows, you will be required to install a pre-built version of `bitsandbytes` library, which supports CUDA 11.6 or 11.7.
+If you want to enable LoRA(QLoRA) or Freeze quantization on Windows, you will be required to install a pre-built version of `bitsandbytes` library, which supports CUDA 11.1 to 12.1.
 
-```
-pip install https://github.com/acpopescu/bitsandbytes/releases/download/v0.37.2-win.1/bitsandbytes-0.37.2-py3-none-any.whl
+```bash
+pip install https://github.com/jllllll/bitsandbytes-windows-webui/releases/download/wheels/bitsandbytes-0.39.1-py3-none-win_amd64.whl
 ```
 
 ### Fine-tuning with a Single GPU
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python src/train_sft.py \
+CUDA_VISIBLE_DEVICES=0 python src/train_bash.py \
+    --stage sft \
     --do_train \
     --dataset alpaca_gpt4_en \
     --finetuning_type lora \
@@ -129,15 +139,14 @@ Please refer to our [Wiki](https://github.com/hiyouga/ChatGLM-Efficient-Tuning/w
 
 ```bash
 accelerate config # configure the environment
-accelerate launch src/train_sft.py # arguments (same as above)
+accelerate launch src/train_bash.py # arguments (same as above)
 ```
-
-Note: if you are using LoRA method at fine-tuning, please provide `--ddp_find_unused_parameters False` argument to avoid the runtime error.
 
 ### Training Reward Model
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python src/train_rm.py \
+CUDA_VISIBLE_DEVICES=0 python src/train_bash.py \
+    --stage rm \
     --do_train \
     --dataset comparison_gpt4_en \
     --finetuning_type lora \
@@ -155,10 +164,12 @@ CUDA_VISIBLE_DEVICES=0 python src/train_rm.py \
 ### Training with RLHF
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python src/train_ppo.py \
+CUDA_VISIBLE_DEVICES=0 python src/train_bash.py \
+    --stage ppo \
     --do_train \
     --dataset alpaca_gpt4_en \
     --finetuning_type lora \
+    --resume_lora_training False \
     --checkpoint_dir path_to_sft_checkpoint \
     --reward_model path_to_rm_checkpoint \
     --output_dir path_to_ppo_checkpoint \
@@ -175,7 +186,8 @@ CUDA_VISIBLE_DEVICES=0 python src/train_ppo.py \
 ### Evaluation (BLEU and ROUGE_CHINESE)
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python src/train_sft.py \
+CUDA_VISIBLE_DEVICES=0 python src/train_bash.py \
+    --stage sft \
     --do_eval \
     --dataset alpaca_gpt4_en \
     --checkpoint_dir path_to_checkpoint \
@@ -187,7 +199,8 @@ CUDA_VISIBLE_DEVICES=0 python src/train_sft.py \
 
 ### Predict
 ```bash
-CUDA_VISIBLE_DEVICES=0 python src/train_sft.py \
+CUDA_VISIBLE_DEVICES=0 python src/train_bash.py \
+    --stage sft \
     --do_predict \
     --dataset alpaca_gpt4_en \
     --checkpoint_dir path_to_checkpoint \
@@ -311,7 +324,7 @@ We select 100 instances in the `alpaca_gpt4_zh` dataset to evaluate the fine-tun
 - [x] Fine-tuning the quantized model.
 - [x] Writing a guidebook about how to fine-tune ChatGLM with this framework.
 - [ ] Combining with state-of-the-art model editing algorithms. (*e.g. [MEND](https://arxiv.org/abs/2110.11309)*)
-- [ ] Incorporating the [OpenAssistant Conversations Dataset](https://huggingface.co/datasets/OpenAssistant/oasst1) for SFT and alignment.
+- [x] Incorporating the [OpenAssistant Conversations Dataset](https://huggingface.co/datasets/OpenAssistant/oasst1) for SFT and alignment.
 - [ ] Incorporating the high quality Chinese instruction dataset [COIG](https://huggingface.co/datasets/BAAI/COIG).
 
 ## License
@@ -334,3 +347,7 @@ If this work is helpful, please cite as:
 ## Acknowledgement
 
 This repo benefits from [ChatGLM-6B](https://github.com/THUDM/ChatGLM-6B), [ChatGLM-Tuning](https://github.com/mymusise/ChatGLM-Tuning) and [yuanzhoulvpi2017/zero_nlp](https://github.com/yuanzhoulvpi2017/zero_nlp). Thanks for their wonderful works.
+
+## Star History
+
+![Star History Chart](https://api.star-history.com/svg?repos=hiyouga/ChatGLM-Efficient-Tuning&type=Date)
